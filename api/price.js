@@ -6,11 +6,10 @@ const agent = new https.Agent({ rejectUnauthorized: false });
 
 module.exports = async (req, res) => {
     const { code } = req.query;
-    const tradingCode = code ? code.toUpperCase() : 'GP';
+    const tradingCode = code ? code.toUpperCase() : 'BEXIMCO';
 
     try {
-        // DSE-র displayCompany.php পেজে রিকোয়েস্ট
-        const { data } = await axios.get(`https://www.dsebd.org/displayCompany.php?name=${tradingCode}`, {
+        const { data } = await axios.get('https://dsebd.org/latest_share_price_scroll_l.php', {
             timeout: 15000,
             httpsAgent: agent,
             headers: {
@@ -19,26 +18,34 @@ module.exports = async (req, res) => {
         });
 
         const $ = cheerio.load(data);
-        let ltp = 'N/A', high = 'N/A', low = 'N/A';
+        let result = { tradingCode, ltp: 'N/A', high: 'N/A', low: 'N/A' };
 
-        // পেজ থেকে ডেটা পার্স করা
-        $('table tr').each((i, row) => {
+        // সব টেবিলের তৃতীয় টেবিলটি ধরি (যেখানে ডেটা থাকে)
+        const tables = $('table');
+        // সাধারণত তৃতীয় টেবিলটি (ইন্ডেক্স 2) মূল ডেটার
+        let targetTable = tables.eq(2); 
+        // যদি না পাই, তাহলে প্রথম টেবিল
+        if (!targetTable.length) targetTable = tables.eq(0);
+
+        targetTable.find('tr').each((i, row) => {
             const tds = $(row).find('td');
-            if (tds.length >= 2) {
-                const label = $(tds[0]).text().trim().toLowerCase();
-                const value = $(tds[1]).text().trim();
-                
-                if (label.includes('last trade')) {
-                    ltp = value || 'N/A';
-                } else if (label.includes('day\'s high')) {
-                    high = value || 'N/A';
-                } else if (label.includes('day\'s low')) {
-                    low = value || 'N/A';
+            if (tds.length >= 6) {
+                const codeFromTable = $(tds[0]).text().trim();
+                // কিছু ক্ষেত্রে ট্রেডিং কোডের সাথে * বা স্পেস থাকতে পারে
+                const cleanCode = codeFromTable.replace(/\*/g, '').trim();
+                if (cleanCode.toUpperCase() === tradingCode) {
+                    result = {
+                        tradingCode,
+                        ltp: $(tds[1]).text().trim() || 'N/A',
+                        high: $(tds[2]).text().trim() || 'N/A',
+                        low: $(tds[3]).text().trim() || 'N/A',
+                    };
+                    return false;
                 }
             }
         });
 
-        res.status(200).json({ success: true, data: { tradingCode, ltp, high, low } });
+        res.status(200).json({ success: true, data: result });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
