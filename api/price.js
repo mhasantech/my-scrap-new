@@ -1,5 +1,9 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
+const https = require('https'); // https মডিউল যোগ করলাম
+
+// SSL যাচাই বন্ধ করার জন্য এজেন্ট
+const agent = new https.Agent({ rejectUnauthorized: false });
 
 module.exports = async (req, res) => {
     const { code } = req.query;
@@ -8,6 +12,7 @@ module.exports = async (req, res) => {
     try {
         const { data } = await axios.get('https://dsebd.org/latest_share_price_scroll_l.php', {
             timeout: 15000,
+            httpsAgent: agent, // এজেন্ট ব্যবহার
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             }
@@ -16,7 +21,6 @@ module.exports = async (req, res) => {
         const $ = cheerio.load(data);
         let result = { tradingCode, ltp: 'N/A', high: 'N/A', low: 'N/A' };
 
-        // DSE টেবিলে ৬টি কলাম: TRADING CODE, LTP*, HIGH, LOW, CLOSE PRICE*, TRADE, VALUE
         $('tr').each((i, row) => {
             const tds = $(row).find('td');
             if (tds.length >= 6) {
